@@ -4,12 +4,12 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
-
-	//"net/url"
+	"net/smtp"
 	"os"
 	"os/signal"
 	"strings"
@@ -18,16 +18,12 @@ import (
 
 func main() {
 
-	// 接收系统信号
-	c := make(chan os.Signal)
-	signal.Notify(c, os.Interrupt, os.Kill)
-
-	// 获取要监控的目标主机IP地址
-	var hostip string
-	fmt.Printf("Enter host ip address:")
-	fmt.Scanln(&hostip)
-
 	var (
+		// 目标主机ip
+		hostip string = ""
+
+		// 邮件信息
+		mail = make(map[string]string)
 
 		// 预警统计时间（秒）
 		warning_time int64 = 120
@@ -36,9 +32,28 @@ func main() {
 		warning_num = 10
 	)
 
+	// 接收系统信号
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, os.Kill)
+
+	// 获取要监控的目标主机IP地址
+	fmt.Printf("Enter host ip address:")
+	fmt.Scanln(&hostip)
+
 	// 读取配置文件
 	conf, err := readconfig("config.ini")
-	fmt.Println(conf)
+	if err != nil {
+		fmt.Println("load config.ini fail.")
+	}
+
+	mail["smtp_host"] = conf["smtp"]["host"]
+	mail["smtp_port"] = conf["smtp"]["port"]
+	mail["smtp_user"] = conf["smtp"]["username"]
+	mail["smtp_passwd"] = conf["smtp"]["password"]
+	mail["from"] = conf["mail"]["from"]
+	mail["to"] = conf["mail"]["to"]
+
+	//fmt.Println(conf)
 
 	type ICMP struct {
 		Type        uint8
@@ -122,7 +137,17 @@ func main() {
 
 				// 判断是否处于统计周期内
 				if interval <= warning_time {
-					fmt.Println("WARNING: Host network exception, Please check!")
+					mail["subject"] = "WARNING: Host(" + hostip + ") network exception"
+					mail["body"] = "WARNING: Host(" + hostip + ") network exception, Please check it!"
+
+					fmt.Println(mail["subject"])
+
+					result := sendmail(mail)
+					if result {
+						fmt.Println("Send mail succeed.")
+					} else {
+						fmt.Println("Send mail fail.")
+					}
 
 					// 超时计数器归零
 					timeout_num = 0
@@ -194,15 +219,13 @@ func readconfig(filename string) (map[string]map[string]string, error) {
 	tag := ""
 
 	for {
-		l, err := buf.ReadString('\n')
+		line, err := buf.ReadString('\n')
 		if err != nil && err != errors.New("EOF") {
-			//fmt.Println(err.Error())
-			break
+			if line == "" {
+				break
+			}
 		}
-		if l == "" {
-			break
-		}
-		line := strings.TrimSpace(l)
+		line = strings.TrimSpace(line)
 
 		// 长度为零继续循环
 		if len(line) == 0 {
@@ -236,8 +259,31 @@ func readconfig(filename string) (map[string]map[string]string, error) {
 }
 
 // 发送邮件
-func sendmail() {
-	fmt.Println("Send mail succeed.")
+func sendmail(mail map[string]string) bool {
+	b64 := base64.NewEncoding("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/")
+
+	header := make(map[string]string)
+	header["From"] = mail["from"]
+	header["To"] = mail["to"]
+	header["Subject"] = fmt.Sprintf("=?UTF-8?B?%s?=", b64.EncodeToString([]byte(mail["subject"])))
+	header["MIME-Version"] = "1.0"
+	header["Content-Type"] = "text/html; charset=UTF-8"
+	header["Content-Transfer-Encoding"] = "base64"
+
+	message := ""
+	for k, v := range header {
+		message += fmt.Sprintf("%s: %s\r\n", k, v)
+	}
+	message += "\r\n" + b64.EncodeToString([]byte(mail["body"]))
+
+	auth := smtp.PlainAuth("text/plain", mail["smtp_user"], mail["smtp_passwd"], mail["smtp_host"])
+
+	err := smtp.SendMail(mail["smtp_host"]+":"+mail["smtp_port"], auth, mail["from"], []string{mail["to"]}, []byte(message))
+	if err != nil {
+		return false
+	}
+
+	return true
 }
 
 func CheckSum(data []byte) uint16 {
