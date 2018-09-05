@@ -126,7 +126,7 @@ func main() {
 
 			// 记录本次超时出现的时间
 			timeout_log[timeout_num] = time.Now().Unix()
-			fmt.Println(timeout_log)
+			//fmt.Println(timeout_log)
 
 			fmt.Printf("PING %s : timeout...(%d)\n", hostip, timeout_num)
 
@@ -138,7 +138,7 @@ func main() {
 				// 判断是否处于统计周期内
 				if interval <= warning_time {
 					mail["subject"] = "WARNING: Host(" + hostip + ") network exception"
-					mail["body"] = "WARNING: Host(" + hostip + ") network exception, Please check it!"
+					mail["body"] = "WARNING: Host(" + hostip + ") network exception, Please check it! (" + time.Now().Format("2006-01-02 15:04:05") + ")"
 
 					fmt.Println(mail["subject"])
 
