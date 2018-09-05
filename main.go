@@ -8,7 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"net/url"
+
+	//"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -37,7 +38,7 @@ func main() {
 
 	// 读取配置文件
 	conf, err := readconfig("config.ini")
-	fmt.Println(conf.conf["smtp"].Get("host"))
+	fmt.Println(conf)
 
 	type ICMP struct {
 		Type        uint8
@@ -180,22 +181,18 @@ func main() {
 	}
 }
 
-type Config struct {
-	conf map[string]url.Values
-}
-
 // 读取ini
-func readconfig(filename string) (*Config, error) {
+func readconfig(filename string) (map[string]map[string]string, error) {
 
-	cf := &Config{
-		conf: make(map[string]url.Values, 10),
-	}
+	cf := make(map[string]map[string]string)
+
 	replacer := strings.NewReplacer(" ", "")
 	f, _ := os.Open(filename)
 	buf := bufio.NewReader(f)
 	defer f.Close()
 
 	tag := ""
+
 	for {
 		l, err := buf.ReadString('\n')
 		if err != nil && err != errors.New("EOF") {
@@ -218,7 +215,7 @@ func readconfig(filename string) (*Config, error) {
 				return nil, errors.New("Error: field to parse this symbol style:\"" + line + "\"")
 			}
 			tag = line[1 : len(line)-1]
-			cf.conf[tag] = url.Values{}
+			cf[tag] = make(map[string]string)
 		} else {
 			line = replacer.Replace(line)
 			spl := strings.Split(line, "=")
@@ -230,7 +227,8 @@ func readconfig(filename string) (*Config, error) {
 			if len(spl) < 2 {
 				return nil, errors.New("error:" + line)
 			}
-			cf.conf[tag].Set(strings.Replace(spl[0], ".", "_", -1), spl[1])
+			k := strings.Replace(spl[0], ".", "_", -1)
+			cf[tag][k] = spl[1]
 		}
 	}
 
