@@ -1,4 +1,26 @@
-// main
+// +---------------------------------------------------------------------------
+// | Host Monitor
+// +---------------------------------------------------------------------------
+// | Copyright (c) 2018 http://www.sunbloger.com
+// +---------------------------------------------------------------------------
+// | Licensed under the Apache License, Version 2.0 (the "License");
+// | you may not use this file except in compliance with the License.
+// | You may obtain a copy of the License at
+// |
+// | http://www.apache.org/licenses/LICENSE-2.0
+// |
+// | Unless required by applicable law or agreed to in writing, software
+// | distributed under the License is distributed on an "AS IS" BASIS,
+// | WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// | See the License for the specific language governing permissions and
+// | limitations under the License.
+// +---------------------------------------------------------------------------
+// | Source: https://github.com/jasonweicn/hostmonitor
+// +---------------------------------------------------------------------------
+// | Author: Jason Wei <jasonwei06@hotmail.com>
+// +---------------------------------------------------------------------------
+// | Website: http://www.sunbloger.com/
+// +---------------------------------------------------------------------------
 package main
 
 import (
@@ -25,11 +47,20 @@ func main() {
 		// 邮件信息
 		mail = make(map[string]string)
 
-		// 预警统计时间（秒）
+		// 发出预警的周期阈值（秒）
 		warning_time int64 = 120
 
-		// 预警统计次数
+		// 发出预警的超时次数阈值
 		warning_num = 10
+
+		// 超时计数器
+		timeout_num int8 = 0
+
+		// 超时日志
+		timeout_log = make([]int64, warning_num)
+
+		// 邮件发送次数
+		sendmail_num int8 = 0
 	)
 
 	// 接收系统信号
@@ -101,12 +132,6 @@ func main() {
 
 	recv := make([]byte, 1024)
 
-	// 超时计数器
-	timeout_num := 0
-
-	// 超时日志
-	timeout_log := make([]int64, warning_num)
-
 	for {
 		if _, err := conn.Write(buffer.Bytes()); err != nil {
 			fmt.Println(err.Error())
@@ -126,10 +151,10 @@ func main() {
 
 			// 记录本次超时出现的时间
 			timeout_log[timeout_num] = time.Now().Unix()
-			//fmt.Println(timeout_log)
 
 			fmt.Printf("PING %s : timeout...(%d)\n", hostip, timeout_num)
 
+			// 判断是否达到超时次数的阈值
 			if timeout_log[warning_num-1] > 0 {
 
 				// 计算从第1次到第warning_num次超时之间的间隔时间
@@ -137,13 +162,14 @@ func main() {
 
 				// 判断是否处于统计周期内
 				if interval <= warning_time {
+
+					// 输出预警信息和发送邮件
 					mail["subject"] = "WARNING: Host(" + hostip + ") network exception"
 					mail["body"] = "WARNING: Host(" + hostip + ") network exception, Please check it! (" + time.Now().Format("2006-01-02 15:04:05") + ")"
-
 					fmt.Println(mail["subject"])
-
 					result := sendmail(mail)
 					if result {
+						sendmail_num++
 						fmt.Println("Send mail succeed.")
 					} else {
 						fmt.Println("Send mail fail.")
